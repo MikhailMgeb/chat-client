@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdn.rawgit.com/Chalarangelo/mini.css/v3.0.1/dist/mini-default.min.css">
+    <title>Chat</title>
+    <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+    <form class="auth-form auth-form_hidden">
+        <h3>Укажите ваше имя</h3>
+        <input class="auth-form__login">
+    </form>
+    <main class="chat"></main>
+    <form class="send-form">
+        <input class="send-form__text">
+    </form>
+</body>
+
+<script>
+    let token;
+    const authForm = document.querySelector('.auth-form');
+    const authFormLogin = document.querySelector('.auth-form__login');
+
+
+    authForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+
+        fetch('http://localhost:3000/register', {
+            method: 'POST',
+            headers: {
+                'Content-type': 'application/json'
+            },
+            body: JSON.stringify({ login: authFormLogin.value })
+        })
+            .then(response => response.json())
+            .then(user => {
+                token = user.token;
+
+                localStorage.setItem('token', token);
+
+                authForm.classList.add('auth-form_hidden');
+                startChatApp();
+            })
+    })
+
+    function getToken() {
+        token = localStorage.getItem('token');
+
+        if (!token) {
+            authForm.classList.remove('auth-form_hidden');
+        } else {
+            startChatApp();
+        }
+
+    }
+
+
+
+    function startChatApp() {
+        const socket = new WebSocket('ws://localhost:3000');
+
+        const chat = document.querySelector('.chat');
+        const sendForm = document.querySelector('.send-form');
+        const sendFormText = document.querySelector('.send-form__text');
+
+        sendForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+
+            socket.send(JSON.stringify({ type: 'message', message: sendFormText.value }));
+
+            sendFormText.value = '';
+        })
+
+        function handleChatData(chatFeed) {
+            for (const message of chatFeed) {
+                handleMessage(message);
+            }
+        }
+
+        function handleMessage(text, isSelfMessage) {
+            const chatMessage = document.createElement('div');
+            const chatMessageText = document.createElement('div');
+
+            chatMessage.classList.add('chat__message');
+
+            chatMessageText.classList.add('chat__message-text');
+
+            if (isSelfMessage) {
+                chatMessageText.classList.add('chat__message-text_self');
+            }
+
+            chatMessageText.textContent = text;
+
+            chatMessage.appendChild(chatMessageText);
+            chat.appendChild(chatMessage);
+        }
+
+        socket.addEventListener('open', () => {
+            socket.send(JSON.stringify({ type: 'auth', token }));
+        });
+
+        socket.addEventListener('message', (event) => {
+            const data = JSON.parse(event.data);
+
+            if (data.type === 'auth-error') {
+                chat.textContent = '';
+                token = undefined;
+
+                localStorage.removeItem('token');
+
+                socket.close();
+            }
+
+            if (data.type === 'message') {
+                handleMessage(data.message)
+            }
+
+            if (data.type === 'self-message') {
+                handleMessage(data.message, true)
+            }
+
+            if (data.type === 'chat') {
+                handleChatData(data.chat);
+            }
+        })
+    }
+
+    getToken()
+</script>
+
+</html>
